@@ -50,6 +50,18 @@ class MockLLM:
                 "suggestion": ["核查A药材采购合同调价条款", "排查提取车间工艺参数"],
                 "citations": ["S1", "C1"],
             }, ensure_ascii=False)
+        if "差异树" in text and "evidence" in text:
+            # M3-3 拆原因：输出可转 RPA 的改进建议（≥3 条，带依据）
+            return json.dumps({
+                "attribution": "中药二厂人工与制造费用偏高，源于设备老旧与自采规模有限；"
+                               "一厂材料端由规模采购占据优势。",
+                "suggestions": [
+                    "核查中药二厂设备台账与折旧政策，评估更新关键设备的经济性",
+                    "对比两厂人工效率（盒/人·日）并排查排产差异",
+                    "评估二厂黄芩自采规模扩大对材料成本的改善空间",
+                    "将人工效率差距纳入月度对标指标跟踪",
+                ],
+            }, ensure_ascii=False)
         if "审批助手" in text:
             return json.dumps({"review": [{"task_id": "TASK-202605-0001",
                                            "risk": "将通知到采购经理", "suggest": "confirm"}]},

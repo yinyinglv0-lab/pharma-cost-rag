@@ -29,8 +29,8 @@ def step1_find() -> dict:
     return {"rows": rows}
 
 
-def step2_struct(product: str) -> dict:
-    """拆结构：总差异 → 要素层；一厂内部成本结构对照（二厂无明细，如实标注）。"""
+def step2_struct(product: str, month: str = "2026-05") -> dict:
+    """拆结构：总差异 → 要素层 → 原材料级下钻（一厂侧明细；二厂无明细如实标注）。"""
     svc, ds = _get()
     nodes = []
     for elem in ("材料", "人工", "制费"):
@@ -38,8 +38,17 @@ def step2_struct(product: str) -> dict:
         nodes.append({"level": "要素", "name": elem, "diff_pct": round(d, 2),
                       "share_of_total": round(abs(d) / max(abs(svc.benchmark_diff(product, e))
                                                            for e in ("材料", "人工", "制费")) * 100, 1)})
-    return {"product": product, "tree": nodes,
-            "note": "对标厂（中药二厂）数据包仅含成本汇总，无原材料明细——结构树下钻止于要素级，如实标注"}
+    # 原材料级下钻（一厂侧明细可得）
+    rows = ds.material_rows(product, month)
+    material = [{"level": "原材料", "name": r["原材料名称"],
+                 "unit_cost": float(r["单位消耗成本(元/盒)"]),
+                 "share": float(str(r["占总材料成本比例"]).rstrip("%"))}
+                for _, r in rows.iterrows()]
+    material.sort(key=lambda x: -x["share"])
+    return {"product": product, "month": month, "tree": nodes,
+            "material_drilldown": material,
+            "note": "对标厂（中药二厂）数据包仅含成本汇总，无原材料明细——二厂侧下钻止于要素级；"
+                    "一厂侧已下钻至原材料级，二厂侧差异去向如实标注为'数据不可得'"}
 
 
 def step3_cause(product: str, month: str = "2026-05") -> dict:
