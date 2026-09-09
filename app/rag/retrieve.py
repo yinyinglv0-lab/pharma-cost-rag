@@ -68,6 +68,17 @@ def _is_numeric_query(query: str) -> bool:
     return any(w in query for w in _NUMERIC_INTENT)
 
 
+def _filter_forbidden(items, numeric: bool, apply_filter: bool = True):
+    """过滤纯函数（可单测）：数值敏感查询移除 forbid_current_numbers 的静态价块并产出告警。"""
+    kept, warnings = [], []
+    for r in items:
+        if numeric and apply_filter and r.get("forbid_current_numbers"):
+            warnings.append(f"已过滤静态价块 {r['chunk_id']}（type={r['type']}，禁引为当期数字）")
+            continue
+        kept.append(r)
+    return kept, warnings
+
+
 def retrieve(query: str, top_k: int = 5, filter_forbidden: bool = True) -> EvidenceBundle:
     """三通道检索入口。
 
@@ -85,19 +96,15 @@ def retrieve(query: str, top_k: int = 5, filter_forbidden: bool = True) -> Evide
     results, paths = kb.retrieve(query, top_k=max(top_k * 2, top_k + 5))
     bundle = EvidenceBundle(query=query, graph_paths=paths[:10])
     numeric = _is_numeric_query(query)
-    for r in results:
-        if numeric and filter_forbidden and r["forbid_current_numbers"]:
-            bundle.warnings.append(
-                f"已过滤静态价块 {r['chunk_id']}（type={r['type']}，禁引为当期数字）")
-            continue
+    kept, warnings = _filter_forbidden(results, numeric, apply_filter=filter_forbidden)
+    bundle.warnings.extend(warnings)
+    for r in kept[:top_k]:
         bundle.results.append(EvidenceItem(
             chunk_id=r["chunk_id"], source=r["source"], page=r.get("page"),
             doc_version=r["doc_version"], type=r["type"], channel=r.get("channel", ""),
             score=r.get("score", 0.0), title=r["title"], text=r["text"],
             forbid_current_numbers=r["forbid_current_numbers"],
         ))
-        if len(bundle.results) >= top_k:
-            break
     return bundle
 
 

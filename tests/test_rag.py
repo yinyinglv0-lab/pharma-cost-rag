@@ -37,12 +37,48 @@ def test_spot_check_verified_fragments(kb):
 def test_static_price_filtered_for_price_query():
     """硬保证：数值查询结果中绝不出现静态价块（纵深防御第二层）。
 
-    注：IDF 加权后静态价块常不进入候选，过滤可能无对象——保证点是结果洁净，
-    而非"必须发生过过滤"。非数值查询仍可引用（见下一条测试）。
+    注：语义模型+类型权重下静态价块常不进入候选，过滤可能无对象——保证点是结果洁净。
+    过滤"动作"本身由下面两个测试证明（纯函数单测 + 自然触发端到端）。
     """
     b = r.retrieve("黄芩提取物当前价格是多少", top_k=8)
     for item in b.results:
         assert item.type != "处方参考价", f"静态价块漏进结果: {item.chunk_id}"
+
+
+def test_filter_function_removes_and_warns():
+    """过滤纯函数单测：喂入含静态价块的候选，断言移除 + 逐条告警。"""
+    from app.rag.retrieve import _filter_forbidden
+    items = [
+        {"chunk_id": "PF-YH-003", "type": "处方参考价", "forbid_current_numbers": True},
+        {"chunk_id": "MKT-金银花", "type": "行情价", "forbid_current_numbers": False},
+        {"chunk_id": "PF-YH-002", "type": "处方量", "forbid_current_numbers": False},
+    ]
+    kept, warnings = _filter_forbidden(items, numeric=True)
+    assert [i["chunk_id"] for i in kept] == ["MKT-金银花", "PF-YH-002"]
+    assert len(warnings) == 1 and "PF-YH-003" in warnings[0]
+    kept2, warnings2 = _filter_forbidden(items, numeric=False)
+    assert len(kept2) == 3 and not warnings2, "非数值查询不应过滤"
+
+
+def test_filter_triggers_end_to_end():
+    """端到端：自然触发查询（候选含静态价块）→ 告警产生 + 结果洁净。"""
+    b = r.retrieve("金银花涨价成本", top_k=8)
+    assert any(w.startswith("已过滤静态价块") for w in b.warnings), "应产生过滤告警"
+    for item in b.results:
+        assert item.type != "处方参考价", f"静态价块漏进结果: {item.chunk_id}"
+
+
+def test_temporal_tags_complete():
+    """时效标签：行情/行业基准块带明确时间区间，静态参考价块带 static 标记。"""
+    kb = r.knowledge_base()
+    for c in kb.chunks:
+        if c["type"] == "行情价":
+            assert c["temporal"] == "2026-01~2026-06", f"{c['chunk_id']} 行情时效标签缺失"
+        if c["type"] == "行业基准":
+            assert c["temporal"] == "2026-01~2026-06", f"{c['chunk_id']} 基准时效标签缺失"
+        if c["type"] == "处方参考价":
+            assert c["temporal"] == "static" and c["forbid_current_numbers"], \
+                f"{c['chunk_id']} 静态标记缺失"
 
 
 def test_static_price_available_for_non_numeric_query():

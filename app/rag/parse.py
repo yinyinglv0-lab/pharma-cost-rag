@@ -283,7 +283,7 @@ def _csv_knowledge_chunks(ds: DataStore) -> list:
             "chunk_id": f"MKT-{r['药材名称']}",
             "source": "药材市场价格行情_2026年上半年.csv",
             "page": None, "doc_version": "V1.1", "effective_date": "2026-08-16",
-            "type": "行情价", "temporal": "2026-H1", "forbid_current_numbers": False,
+            "type": "行情价", "temporal": "2026-01~2026-06", "forbid_current_numbers": False,
             "title": f"行情·{r['药材名称']}", "context": f"{r['药材名称']} 药材市场行情",
             "text": text,
         })
@@ -294,7 +294,7 @@ def _csv_knowledge_chunks(ds: DataStore) -> list:
             "chunk_id": f"BNM-{r['产品类别']}-{r['指标']}",
             "source": "行业成本基准数据_2026.csv",
             "page": None, "doc_version": "V1.1", "effective_date": "2026-08-16",
-            "type": "行业基准", "temporal": "2026-H1", "forbid_current_numbers": False,
+            "type": "行业基准", "temporal": "2026-01~2026-06", "forbid_current_numbers": False,
             "title": f"行业基准·{r['产品类别']}·{r['指标']}", "context": f"{r['产品类别']} 行业成本基准",
             "text": text,
         })
