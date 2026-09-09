@@ -1,0 +1,10 @@
+# 绝不进入 build context / 镜像的内容（保密铁律）
+*.csv
+*.pdf
+*.xlsx
+*.docx
+data/
+__pycache__/
+*.pyc
+.pytest_cache/
+.git/
