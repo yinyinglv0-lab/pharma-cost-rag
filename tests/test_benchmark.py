@@ -32,6 +32,8 @@ def test_audit_levels_v7():
     f7 = next(i for i in rep["items"] if i["id"] == "F7")
     assert f7["level"] == "黄" and "1:" in f7["evidence"]
     p1 = next(i for i in rep["items"] if i["id"] == "P1")
-    assert p1["level"] == "绿" and p1["verdict"] == "成立"
+    assert p1["level"] == "绿" and p1["verdict"] == "通过"
+    f1v = next(i for i in rep["items"] if i["id"] == "F1")
+    assert f1v["verdict"] == "叙述与数据不符"
     c1 = next(i for i in rep["items"] if i["id"] == "C1")
     assert c1["level"] == "蓝" and "5-6 倍" in c1["evidence"]
