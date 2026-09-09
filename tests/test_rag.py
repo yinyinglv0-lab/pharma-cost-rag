@@ -105,6 +105,21 @@ def test_attribution_query_hits(query, type_kw, text_kw):
 
 
 # ---------- 2.4 图谱多跳路径 ----------
+# ---------- 验收查询集（验证任务3检查项2：6条归因查询，命中率=100%） ----------
+@pytest.mark.parametrize("query,type_kw", [
+    ("金银花涨价的原因", "行情价"),
+    ("银黄口服液成本为什么上涨", "行情价"),
+    ("黄芩价格波动对产品成本的影响", "行情价"),
+    ("提取车间收率下降原因", "工艺参数"),
+    ("金银花采购价变化趋势", "行情价"),   # 赛题示例"A药材"占位符 → 具体药材等价查询
+    ("设备故障导致成本增加", "维修事件"),
+])
+def test_compliance_query_set(query, type_kw):
+    b = r.retrieve(query, top_k=3)
+    top3 = [i.type for i in b.results[:3]]
+    assert type_kw in top3, f"[{query}] top-3 未命中 {type_kw}: {top3}"
+
+
 def test_graph_product_material_event_path(kb):
     g = kb.graph
     assert g.check_path("银黄口服液", "金银花", max_hops=1)

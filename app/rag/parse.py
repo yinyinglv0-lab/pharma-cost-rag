@@ -271,14 +271,26 @@ def build_office_chunks(kb_dir) -> list:
     return chunks
 
 
+def _material_products():
+    """药材 → 关联产品（实体表 BOM 关联，供行情块知识增强）。"""
+    from . import entities
+    m2p = {}
+    for p, info in entities.PRODUCTS.items():
+        for material, _qty in info["处方量"]:
+            m2p.setdefault(material, []).append(p)
+    return m2p
+
+
 def _csv_knowledge_chunks(ds: DataStore) -> list:
     """行情/行业基准 → 行业知识块（数字事实仍由 DataStore 出，此处只供引用佐证）。"""
     out = []
+    m2p = _material_products()
     for _, r in ds.market.iterrows():
         prices = "、".join(f"{m}月{float(r[f'{m}月价格']):g}元/kg"
                            for m in range(1, 7))
+        prods = "、".join(m2p.get(r["药材名称"], [])) or "暂无关联"
         text = (f"{r['药材名称']}（{r['规格等级']}，{r['价格来源']}）2026上半年价格：{prices}。"
-                f"趋势：{r['趋势分析']}")
+                f"趋势：{r['趋势分析']}。关联产品：{prods}。")
         out.append({
             "chunk_id": f"MKT-{r['药材名称']}",
             "source": "药材市场价格行情_2026年上半年.csv",

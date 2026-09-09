@@ -9,7 +9,7 @@ from .store import HybridRetriever
 
 # 数值敏感意图词：命中则过滤 forbid_current_numbers 的块（I5 防线，纵深防御第二层）
 _NUMERIC_INTENT = ["价格", "单价", "多少钱", "元/kg", "元/盒", "当前", "本月", "成本是多少",
-                   "涨价", "降价", "行情"]
+                   "涨价", "降价", "上涨", "下跌", "走高", "走低", "回落", "行情"]
 
 
 @dataclass
@@ -104,6 +104,14 @@ def retrieve(query: str, top_k: int = 5, filter_forbidden: bool = True) -> Evide
             doc_version=r["doc_version"], type=r["type"], channel=r.get("channel", ""),
             score=r.get("score", 0.0), title=r["title"], text=r["text"],
             forbid_current_numbers=r["forbid_current_numbers"],
+        ))
+    # 图谱通道证据：channel="graph" 追加（不参与文本排序，供写作层 [C1] 引用）
+    for k, path_text in enumerate(paths[:5]):
+        bundle.results.append(EvidenceItem(
+            chunk_id=f"GRAPH-{k:03d}", source="知识图谱（实体表+事件层）", page=None,
+            doc_version="entities-v7", type="图谱证据", channel="graph",
+            score=0.0, title="图谱路径", text=path_text,
+            forbid_current_numbers=False,
         ))
     return bundle
 
