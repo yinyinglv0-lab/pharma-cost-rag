@@ -1,0 +1,10 @@
+# 赛题数据包 —— 严禁入库、严禁外传（保密承诺）
+*.csv
+*.pdf
+*.xlsx
+*.docx
+data/
+
+__pycache__/
+*.pyc
+.pytest_cache/

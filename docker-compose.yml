@@ -1,0 +1,10 @@
+# 一键启动：docker compose up
+# ⚠ 状态：未在本地验证（Docker 环境待就绪），后续实测后删除本行
+# 说明：赛题数据包以只读卷挂载注入容器，数据绝不进入镜像或仓库
+services:
+  checks:
+    build: .
+    volumes:
+      - ../创灵境_考题模拟数据0816/创灵境_考题模拟数据:/data:ro
+    environment:
+      - COST_DATA_DIR=/data
