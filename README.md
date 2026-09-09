@@ -14,6 +14,14 @@
 - `tests/` — pytest 测试（金丝雀 + 断言库）
 - `scripts/run_checks.py` — 免 pytest 一键检查
 
+## 阶段 4：四模块 Web 界面
+
+```bash
+streamlit run frontend/app.py
+# 四个页签：报告生成 / 成本看板(ECharts本地渲染) / 对标审计(一致性检验器v7) / RPA整改闭环(人工确认→推送)
+# RPA 闭环需先启动出题方 mock 服务: python <数据包>/05_RPA接口文档/mock_rpa_server.py
+```
+
 ## 运行
 
 ```bash

@@ -34,6 +34,8 @@ STEPS = [
      [sys.executable, "scripts/run_rag_checks.py"]),
     ("阶段3 验收脚本 (4/4)",
      [sys.executable, "scripts/run_agent_checks.py"]),
+    ("阶段4 四模块验收脚本 (15 passed)",
+     [sys.executable, "scripts/run_phase4_checks.py"]),
 ]
 
 
