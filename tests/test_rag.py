@@ -27,6 +27,10 @@ def test_spot_check_verified_fragments(kb):
     for frag in ["金银花", "0.08", "8,500", "0.7917%", "115 °C",
                  "提取收率", "375.0mg", "物料平衡", "洁净区", "收率"]:
         assert frag in all_text, f"缺失原文片段: {frag}"
+    # 部首补充区归一断言：2E80-2EFF 区块字符不允许残留（银⻩/⻋间 等必须归一）
+    for c in kb.chunks:
+        assert not any("⺀" <= ch <= "⻿" for ch in c["text"]), \
+            f"{c['chunk_id']} 残留未归一部首字符"
 
 
 # ---------- 2.2 知识块类型过滤（I5） ----------

@@ -25,6 +25,26 @@ _SECTION_SPLIT = re.compile(
 
 _NOISE_LINES = {"国家市场监督管理总局规章", "卫生部发布", "X"}
 
+# CJK 部首补充区（U+2E80-2EFF）：NFKC 不覆盖该区块，需显式映射（本语料实测出现的 10 个）
+_RADICAL_MAP = str.maketrans({
+    "⻩": "黄",   # ⻩
+    "⻋": "车",   # ⻋
+    "⻛": "风",   # ⻛
+    "⻄": "西",   # ⻄
+    "⻅": "见",   # ⻅
+    "⻜": "飞",   # ⻜
+    "⻆": "角",   # ⻆
+    "⻓": "长",   # ⻓
+    "⻣": "骨",   # ⻣
+    "⻰": "龙",   # ⻰
+    "⺠": "民",   # ⺠
+})
+
+
+def _normalize(text: str) -> str:
+    """NFKC + 部首补充区显式映射（两级归一，保证银⻩→银黄、⻋间→车间）。"""
+    return unicodedata.normalize("NFKC", text).translate(_RADICAL_MAP)
+
 PDF_CFG = [
     {"file": "产品配方文档_银黄口服液.pdf", "doc_id": "PF-YH",
      "version": "V2.0", "effective": "2025-01-01", "kind": "配方"},
@@ -98,11 +118,16 @@ def _split_sections(page_texts):
         s = ln.strip()
         if _SECTION_SPLIT.match(s) and len(s) <= 40:
             starts.append((i, pg, off, s))
+    # 卷首内容（首个章节标题之前的文档标题/编号/版本行）并入第一节，不丢信息
+    first_off = starts[0][2] if starts else None
+    lead = "\n".join(ln for ln, p, o in lines if first_off is None or o < first_off)
     sections = []
     for k, (i, pg, off, title) in enumerate(starts):
         end_off = starts[k + 1][2] if k + 1 < len(starts) else None
         body = "\n".join(ln for ln, p, o in lines
                          if o >= off and (end_off is None or o < end_off))
+        if k == 0 and _clean(lead).strip():
+            body = lead + "\n" + body
         end_pg = starts[k + 1][1] if k + 1 < len(starts) else page_texts[-1][0]
         text = _clean(body)
         if len(text) < 30:
@@ -121,9 +146,7 @@ def _pages_of(path: Path):
     pages = []
     for i, page in enumerate(reader.pages):
         text = page.extract_text() or ""
-        # NFKC：把康熙部首/兼容字符（⼀⼆三、⼯、⽅…）归一为标准汉字，
-        # 否则章节正则与 jieba 分词都会错位
-        pages.append((i + 1, unicodedata.normalize("NFKC", text)))
+        pages.append((i + 1, _normalize(text)))
     return pages
 
 
@@ -171,6 +194,7 @@ def build_document_chunks(base_dir=None) -> list:
                     "chunk_id": f"{cfg['doc_id']}-{i:03d}" + (f"-w{w}" if len(_window_split(sec['text'])) > 1 else ""),
                     "source": cfg["file"],
                     "page": sec["page"],
+                    "end_page": sec["end_page"],
                     "doc_version": cfg["version"],
                     "effective_date": cfg["effective"],
                     "type": ctype,
@@ -208,8 +232,8 @@ def _parse_txt(path):
 
 
 def _chunks_from_text(text, doc_id, source, kind, version="未知版本", effective=""):
-    """通用管线：文本 → NFKC → 分节 → 滑窗 → 知识块（Word/TXT 无页码，page=None）。"""
-    sections = _split_sections([(1, unicodedata.normalize("NFKC", text))])
+    """通用管线：文本 → 归一 → 分节 → 滑窗 → 知识块（Word/TXT 无页码，page=None）。"""
+    sections = _split_sections([(1, _normalize(text))])
     chunks = []
     for i, sec in enumerate(sections):
         ctype, forbid = _type_of(sec["title"], kind)
