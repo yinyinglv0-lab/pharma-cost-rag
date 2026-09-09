@@ -115,6 +115,11 @@ HYPOTHESES = [
 ]
 
 
+# 层级 → 判定文案（避免"红-成立"这类自相矛盾的展示）
+_VERDICT_BY_LEVEL = {"红": "叙述与数据不符", "黄": "部分成立", "蓝": "口径澄清",
+                     "灰": "待核对", "绿": "通过"}
+
+
 def audit() -> dict:
     """运行全部假设 → 审计报告（四级判定）。"""
     svc = _svc()
@@ -122,7 +127,7 @@ def audit() -> dict:
     for hid, desc, fn in HYPOTHESES:
         level, ok, evidence = fn(svc)
         items.append({"id": hid, "hypothesis": desc, "level": level,
-                      "verdict": "成立" if ok else "不成立",
+                      "verdict": _VERDICT_BY_LEVEL[level],
                       "evidence": str(evidence)})
     counts = {}
     for it in items:
