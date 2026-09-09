@@ -13,7 +13,9 @@ ROOT = Path(__file__).parent.parent.parent
 
 
 def _run(cmd):
-    r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=600)
+    # 子进程 stdout 是 UTF-8（脚本内部已 reconfigure），必须显式按 UTF-8 解码
+    r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=600)
     return r.returncode, (r.stdout or "") + (r.stderr or "")
 
 
