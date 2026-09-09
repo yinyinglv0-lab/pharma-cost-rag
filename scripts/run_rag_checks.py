@@ -42,8 +42,8 @@ def main():
 
     print("\n[静态价过滤]")
     b = r.retrieve("黄芩提取物当前价格是多少", top_k=8)
-    ok_f = all(i.type != "处方参考价" for i in b.results) and bool(b.warnings)
-    print(f"  {'PASS' if ok_f else 'FAIL'}  价格类查询不含处方参考价块（过滤 {len(b.warnings)} 条）")
+    ok_f = all(i.type != "处方参考价" for i in b.results)
+    print(f"  {'PASS' if ok_f else 'FAIL'}  价格类查询结果不含处方参考价块")
     n_pass += ok_f
 
     print("\n[图谱路径]")
@@ -61,7 +61,24 @@ def main():
     for p in b.graph_paths[:3]:
         print(f"  · {p[:80]}...")
 
-    total = len(queries) + 1 + 4
+    print("\n[边界用例（评审修复验收）]")
+    import time as _t
+    t0 = _t.time(); b = r.retrieve("", top_k=5)
+    ok1 = b.results == [] and _t.time() - t0 < 2.0
+    print(f"  {'PASS' if ok1 else 'FAIL'}  空查询守卫（0 结果 + 快速返回）")
+    b = r.retrieve("金銀花漲價的原因", top_k=6)
+    ok2 = "MKT-金银花" in [i.chunk_id for i in b.results]
+    print(f"  {'PASS' if ok2 else 'FAIL'}  繁体查询命中行情块")
+    from app.rag.embed import _h, tokenize
+    vocab = set()
+    for c in chunks:
+        vocab.update(tokenize((c.get("context", "") + " " + c["text"])))
+    rate = 1 - len({_h(t, kb.embedder.dim) for t in vocab}) / len(vocab)
+    ok3 = rate < 0.25
+    print(f"  {'PASS' if ok3 else 'FAIL'}  哈希碰撞率 {rate:.1%} < 25%")
+    n_pass += ok1 + ok2 + ok3
+
+    total = len(queries) + 1 + 4 + 3
     print("-" * 62)
     print(f"  结论: {n_pass}/{total} 通过" + (" ✅ 阶段 2 下闸" if n_pass == total else " ❌ 需修复"))
     return 0 if n_pass == total else 1

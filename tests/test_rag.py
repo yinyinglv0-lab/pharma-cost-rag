@@ -31,8 +31,12 @@ def test_spot_check_verified_fragments(kb):
 
 # ---------- 2.2 知识块类型过滤（I5） ----------
 def test_static_price_filtered_for_price_query():
+    """硬保证：数值查询结果中绝不出现静态价块（纵深防御第二层）。
+
+    注：IDF 加权后静态价块常不进入候选，过滤可能无对象——保证点是结果洁净，
+    而非"必须发生过过滤"。非数值查询仍可引用（见下一条测试）。
+    """
     b = r.retrieve("黄芩提取物当前价格是多少", top_k=8)
-    assert any(w.startswith("已过滤静态价块") for w in b.warnings), "应过滤静态价块"
     for item in b.results:
         assert item.type != "处方参考价", f"静态价块漏进结果: {item.chunk_id}"
 
@@ -71,6 +75,25 @@ def test_graph_maintenance_path(kb):
     g = kb.graph
     assert g.check_path("六味地黄胶囊", "EQ-JN-006", max_hops=3), "产品→设备编号路径不可达"
     assert g.check_path("EQ-JN-006", "维修:2026-03:EQ-JN-006", max_hops=1)
+
+
+def test_graph_workshop_equipment_paths(kb):
+    """车间→设备 路径（评审改进：补全覆盖）。"""
+    g = kb.graph
+    assert g.check_path("口服液车间", "EQ-TQ-001", max_hops=1)
+    assert g.check_path("颗粒剂车间", "EQ-KL-002", max_hops=1)
+    assert g.check_path("胶囊剂车间", "EQ-JN-006", max_hops=1)
+
+
+def test_graph_scenario_event_paths(kb):
+    """六条场景事件（E1-E6）全部可达（评审改进：补全覆盖；E4 连通全部产品）。"""
+    from app.rag import entities
+    g = kb.graph
+    for ev in entities.SCENARIO_EVENTS:
+        nid = f"场景:{ev['id']}"
+        products = list(entities.PRODUCTS) if ev["product"] == "全部产品" else [ev["product"]]
+        for p in products:
+            assert g.check_path(p, nid, max_hops=2), f"路径不可达: {p} → {nid}"
 
 
 def test_graph_evidence_for_price_query():

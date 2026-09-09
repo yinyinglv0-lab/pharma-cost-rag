@@ -133,17 +133,24 @@ _WIN_OVERLAP = 150
 
 
 def _window_split(text: str):
-    """超长节按滑窗切分（GMP 全文等），避免长块统治 BM25/向量打分。"""
+    """超长节按滑窗切分（GMP 全文等），避免长块统治 BM25/向量打分。
+
+    评审修复（P1-6）：优先在最近句号处断开（+150 字符内），减少句子截断。
+    """
     if len(text) <= _MAX_CHUNK:
         return [text]
     out = []
     start = 0
     while start < len(text):
-        seg = text[start:start + _WIN_SIZE]
-        out.append(seg)
-        if start + _WIN_SIZE >= len(text):
+        end = min(start + _WIN_SIZE, len(text))
+        if end < len(text):
+            idx = text.find("。", end)
+            if idx != -1 and idx - end <= 150:
+                end = idx + 1
+        out.append(text[start:end])
+        if end >= len(text):
             break
-        start += _WIN_SIZE - _WIN_OVERLAP
+        start = max(end - _WIN_OVERLAP, start + 1)
     return out
 
 

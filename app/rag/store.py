@@ -11,7 +11,7 @@ from pathlib import Path
 import networkx as nx
 from rank_bm25 import BM25Okapi
 
-from .embed import JiebaHashEmbedder, tokenize
+from .embed import JiebaIdfHashEmbedder, add_domain_word, tokenize
 from . import entities
 
 RRF_K = 60
@@ -58,24 +58,29 @@ class NumpyVectorStore:
 
 
 class ChromaVectorStore:
-    """ChromaDB 持久化实现（赛题推荐的向量库之一）。"""
+    """ChromaDB 持久化实现（赛题推荐的向量库之一）。
+
+    评审修复（P1-2）：集合名 = 内容签名（chunk_id 列表 md5），幂等 get_or_create，
+    已写入则跳过——不再每次删库重建，多 worker 并发安全；旧集合自然积累，
+    不主动删除（其他进程可能正在使用）。
+    """
     def __init__(self, chunks, embedder, persist_dir=None):
         import chromadb
+        import hashlib
         self.chunks = chunks
         self.embedder = embedder
         persist_dir = persist_dir or os.path.join(tempfile.gettempdir(), "pharma_rag_chroma")
         self._client = chromadb.PersistentClient(path=persist_dir)
-        try:
-            self._client.delete_collection("pharma_kb")
-        except Exception:
-            pass
+        sig = hashlib.md5("|".join(c["chunk_id"] for c in chunks).encode("utf-8")).hexdigest()[:10]
+        self._name = f"pharma_kb_{sig}"
         self._col = self._client.get_or_create_collection(
-            "pharma_kb", embedding_function=embedder, metadata={"hnsw:space": "cosine"})
-        self._col.add(
-            ids=[c["chunk_id"] for c in chunks],
-            documents=[_index_text(c) for c in chunks],
-            metadatas=[{"type": c["type"], "source": c["source"]} for c in chunks],
-        )
+            self._name, embedding_function=embedder, metadata={"hnsw:space": "cosine"})
+        if self._col.count() == 0:
+            self._col.add(
+                ids=[c["chunk_id"] for c in chunks],
+                documents=[_index_text(c) for c in chunks],
+                metadatas=[{"type": c["type"], "source": c["source"]} for c in chunks],
+            )
 
     def search(self, query, top_k=10):
         res = self._col.query(query_texts=[query], n_results=top_k)
@@ -132,7 +137,9 @@ class NetworkxGraphStore:
         for ev in entities.SCENARIO_EVENTS:
             nid = f"场景:{ev['id']}"
             G.add_node(nid, kind="场景事件", **ev)
-            G.add_edge(ev["product"], nid, rel="场景事件")
+            products = list(entities.PRODUCTS) if ev["product"] == "全部产品" else [ev["product"]]
+            for p in products:
+                G.add_edge(p, nid, rel="场景事件")
             if ev["material"]:
                 G.add_edge(ev["material"], nid, rel="场景事件")
         if ds is not None:  # 行情事件层（2026 上半年，13 药材）
@@ -147,23 +154,38 @@ class NetworkxGraphStore:
                     G.add_edge(material, nid, rel="行情事件")
 
     def anchor_entities(self, query: str) -> list:
-        """从查询文本中锚定图谱实体（词典匹配，确定性；只锚定 产品/药材/设备 三类）。"""
+        """从查询文本中锚定图谱实体（分词级匹配，确定性；只锚定 产品/药材/设备 三类）。
+
+        评审修复（P0-1）：空查询守卫 + 分词级精确匹配（杜绝子串/空串锚定爆炸）。
+        兼容长名实体：查询 token 为实体名的一部分（如 token"胶囊填充机"∈节点"全自动胶囊填充机"）。
+        """
+        if not query.strip():
+            return []
+        tokens = set(tokenize(query))
         hits = []
         for node, data in self.G.nodes(data=True):
-            if data.get("kind") in ("产品", "药材", "设备") and node in query:
+            if data.get("kind") not in ("产品", "药材", "设备"):
+                continue
+            if node in tokens or (len(node) >= 4 and node in query) \
+                    or any(len(t) >= 4 and t in node for t in tokens):
                 hits.append(node)
         return hits
 
-    def paths(self, query: str, hops: int = 2) -> list:
-        """实体锚点 -> k-hop 邻域路径 -> 文本证据。"""
+    def paths(self, query: str, hops: int = 2, max_paths: int = 20) -> list:
+        """实体锚点 -> k-hop 邻域路径 -> 文本证据（去重 + 上限，评审修复 P1-7）。"""
         anchors = self.anchor_entities(query)
-        texts = []
+        texts, seen = [], set()
         for anchor in anchors:
             for target in nx.single_source_shortest_path_length(self.G, anchor, cutoff=hops):
                 for path in nx.all_simple_paths(self.G, anchor, target, cutoff=hops):
                     if len(path) < 2:
                         continue
-                    texts.append(self._path_text(path))
+                    t = self._path_text(path)
+                    if t not in seen:
+                        seen.add(t)
+                        texts.append(t)
+                    if len(texts) >= max_paths:
+                        return texts
         return texts
 
     def _path_text(self, path):
@@ -240,7 +262,8 @@ def _type_weight_map(query: str, chunks: list) -> list:
 class HybridRetriever:
     def __init__(self, chunks, ds=None, use_chroma=True):
         self.chunks = chunks
-        self.embedder = JiebaHashEmbedder()
+        # IDF 在语料上拟合（评审修复 P1-1）：罕见领域词权重高，停用词≈0
+        self.embedder = JiebaIdfHashEmbedder(corpus=[_index_text(c) for c in chunks])
         self.bm25 = BM25Store(chunks)
         self.vector = make_vector_store(chunks, self.embedder, use_chroma=use_chroma)
         self.graph = make_graph_store(ds)
