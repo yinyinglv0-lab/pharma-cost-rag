@@ -18,25 +18,31 @@ class MockLLM:
     def invoke(self, messages) -> str:
         text = " ".join(m if isinstance(m, str) else str(m.get("content", m)) for m in messages)
         if "整改任务调度器" in text:
-            month = re.search(r"(\d{4})-(\d{2})", text)
-            mm = f"{month.group(1)}{month.group(2)}" if month else "202606"
+            from calendar import monthrange
+            from datetime import date, timedelta
+            from ..core.calc import PRODUCTS
+            product = next((p for p in PRODUCTS if p in text), "银黄口服液")
+            m = re.search(r"(\d{4})-(\d{2})", text)
+            year, mon = (int(m.group(1)), int(m.group(2))) if m else (2026, 5)
+            mm = f"{year}{mon:02d}"
+            deadline = date(year, mon, monthrange(year, mon)[1]) + timedelta(days=3)
             return json.dumps({
                 "task_id": f"TASK-{mm}-0001",
-                "task_title": "请核查金银花2026年5月采购合同调价条款",
+                "task_title": f"请核查{product}{year}年{mon}月成本异常项采购合同调价条款",
                 "assignee": {"name": "张伟", "department": "采购部", "role": "采购经理"},
-                "source": {"analysis_type": "月度成本分析", "analysis_month": "2026-05",
-                           "product": "银黄口服液", "finding": "金银花采购价环比上涨，超阈值告警"},
+                "source": {"analysis_type": "月度成本分析", "analysis_month": f"{year}-{mon:02d}",
+                           "product": product, "finding": f"{product}成本要素超阈值告警"},
                 "priority": "high",
-                "deadline": "2026-06-03",
+                "deadline": deadline.isoformat(),
                 "suggestion": "核查采购合同中调价条款；比对新老供应商报价",
                 "notify_method": "wechat",
-                "created_at": "2026-06-01T09:00:00",
+                "created_at": f"{year}-{mon:02d}-01T09:00:00",
             }, ensure_ascii=False)
         if "成本归因分析师" in text:
             # 只从 user 消息（内嵌 fact_pack）取第一个数字 + [S1] 引用（数值锁定协议正向示范）
             last = messages[-1]
             last_text = last["content"] if isinstance(last, dict) else str(last)
-            nums = re.findall(r"\d+\.\d+", last_text)
+            nums = re.findall(r"-?\d+\.\d+", last_text)  # 保留负号（环比可为负）
             v = nums[0] if nums else "0.00"
             return json.dumps({
                 "finding": "直接材料成本环比上涨，贡献总成本上涨的主要部分。",
