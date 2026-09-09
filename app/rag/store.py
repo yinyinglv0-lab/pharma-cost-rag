@@ -11,7 +11,7 @@ from pathlib import Path
 import networkx as nx
 from rank_bm25 import BM25Okapi
 
-from .embed import JiebaIdfHashEmbedder, add_domain_word, tokenize
+from .embed import JiebaIdfHashEmbedder, add_domain_word, auto_embedder, tokenize
 from . import entities
 
 RRF_K = 60
@@ -71,7 +71,9 @@ class ChromaVectorStore:
         self.embedder = embedder
         persist_dir = persist_dir or os.path.join(tempfile.gettempdir(), "pharma_rag_chroma")
         self._client = chromadb.PersistentClient(path=persist_dir)
-        sig = hashlib.md5("|".join(c["chunk_id"] for c in chunks).encode("utf-8")).hexdigest()[:10]
+        # 签名含嵌入器名：同一批块在 哈希嵌入 与 语义模型 下是不同的集合，避免协议/维度冲突
+        sig = hashlib.md5((embedder.name() + "|" + "|".join(c["chunk_id"] for c in chunks))
+                          .encode("utf-8")).hexdigest()[:10]
         self._name = f"pharma_kb_{sig}"
         self._col = self._client.get_or_create_collection(
             self._name, embedding_function=embedder, metadata={"hnsw:space": "cosine"})
@@ -260,10 +262,16 @@ def _type_weight_map(query: str, chunks: list) -> list:
 
 
 class HybridRetriever:
-    def __init__(self, chunks, ds=None, use_chroma=True):
+    def __init__(self, chunks, ds=None, use_chroma=True, embedder=None):
         self.chunks = chunks
-        # IDF 在语料上拟合（评审修复 P1-1）：罕见领域词权重高，停用词≈0
-        self.embedder = JiebaIdfHashEmbedder(corpus=[_index_text(c) for c in chunks])
+        corpus = [_index_text(c) for c in chunks]
+        # 嵌入器选择：显式实例 > "hash"（确定性测试/CI）> auto（语义模型优先，无网兜底哈希）
+        if embedder == "hash":
+            self.embedder = JiebaIdfHashEmbedder(corpus=corpus)
+        elif embedder is not None:
+            self.embedder = embedder
+        else:
+            self.embedder = auto_embedder(corpus)
         self.bm25 = BM25Store(chunks)
         self.vector = make_vector_store(chunks, self.embedder, use_chroma=use_chroma)
         self.graph = make_graph_store(ds)

@@ -36,6 +36,29 @@ pytest -q
 3. 同一比值的多个量必须取自同一时间窗口（窗口对齐硬规则）；
 4. 固定/变动分解统一最小二乘回归并标注 R²，高低点法仅作敏感性参照。
 
+## 合规性（对照赛题条款）
+
+- **5.1.2 文档格式**：支持 **PDF（pypdf）/ Word（python-docx，段落+表格）/ TXT（多编码）**，
+  统一走"NFKC → 分节 → 滑窗 → 元数据"管线（`app/rag/parse.py`，验收见 `tests/test_formats.py`）；
+- **5.1.2 三类知识**：产品（配方）/行业（行情+基准+GMP）/企业（工艺+设备台账）三类均有分块与索引，
+  元数据带明确 `type` 标记；
+- **5.1.2 混合检索 + 来源标注**：BM25+向量双通道 RRF 融合；每条结果带文件名/页码/章节/版本；
+- **6.1 向量数据库**：ChromaDB（持久化，内容签名集合名），numpy 无网降级，双后端一致性测试锁定；
+- **6.1 语义检索（两级方案）**：默认自动选择——本地语义模型（中文句向量，离线可用，
+  满足"语义检索"本义，同义改写查询命中）；**未安装/无网时自动降级 IDF 哈希嵌入**
+  （确定性，演示机兜底，答辩口径如实说明）。
+  模型获取（国内走 ModelScope，无需科学上网）：
+  ```bash
+  pip install modelscope sentence-transformers
+  python -c "from modelscope import snapshot_download; print(snapshot_download('iic/nlp_gte_sentence-embedding_chinese-small'))"
+  # 把打印出的本地路径设给环境变量（系统将自动探测该路径，或显式设置）：
+  set RAG_EMBED_MODEL=D:\path\to\nlp_gte_sentence-embedding_chinese-small
+  ```
+  `RAG_EMBED_FORCE=hash` 强制兜底；系统自动探测 ModelScope 缓存路径与 HF 默认模型名；
+- **6.2 知识图谱增强 RAG**：networkx 图谱真实融入检索链路（实体锚定→多跳路径→证据通道）；
+  Neo4j 为预留适配层；
+- **6.1 框架**：LangChain 集成计划于阶段 3（HybridRetriever 包装为 BaseRetriever）。
+
 ## RAG 权重与边界保证（阶段 2 评审修复记录）
 
 **混合检索权重经验证**：BM25 0.3 / 向量 0.7（README 建议值）与 0.5/0.5、0.2/0.8

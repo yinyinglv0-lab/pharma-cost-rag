@@ -10,6 +10,7 @@ v2（评审修复 P1-1）：
 """
 import hashlib
 import math
+import os
 from collections import Counter
 
 import jieba
@@ -95,19 +96,56 @@ class JiebaIdfHashEmbedder:
 JiebaHashEmbedder = JiebaIdfHashEmbedder
 
 
-def best_available(corpus: list = None, dim: int = EMBED_DIM):
-    """优先本地语义模型，不可用则 IDF 哈希嵌入（演示机兜底）。"""
-    try:
-        from sentence_transformers import SentenceTransformer
-        model = SentenceTransformer("shibing624/text2vec-base-chinese")
-        return SentenceTransformerEmbedder(model)
-    except Exception:
-        return JiebaIdfHashEmbedder(corpus, dim)
+def _resolve_model_name():
+    """模型解析顺序：环境变量 → ModelScope 本地缓存（国内可达）→ HF 默认名（离线不可达时哈希兜底接管）。
+
+    在 auto_embedder 调用时动态解析——模型晚于模块导入才下载完成也能被探测到。
+    """
+    env = os.environ.get("RAG_EMBED_MODEL")
+    if env:
+        return env
+    from pathlib import Path
+    root = Path.home() / ".cache/modelscope/models"
+    for cand in ("iic--nlp_gte_sentence-embedding_chinese-small",
+                 "iic--nlp_gte_sentence-embedding_chinese-base"):
+        snap = root / cand / "snapshots"
+        if snap.exists():
+            latest = sorted(snap.iterdir())
+            if latest:
+                return str(latest[-1])
+    for cand in ("nlp_gte_sentence-embedding_chinese-small", "nlp_gte_sentence-embedding_chinese-base",
+                 "text2vec-base-chinese"):
+        for prefix in (Path.home() / ".cache/modelscope/hub/models/iic",
+                       Path.home() / ".cache/huggingface/hub/models--shibing624"):
+            p = prefix / cand
+            if p.exists():
+                return str(p)
+    return "shibing624/text2vec-base-chinese"
 
 
 class SentenceTransformerEmbedder:
-    def __init__(self, model):
+    """本地语义模型（GTE/text2vec 中文句向量，可离线使用，满足 6.1"语义检索"本义）。
+
+    available 类标记：成功实例化即置 True，供测试/文档判断当前生效的嵌入路径。
+    """
+    available = False
+
+    def __init__(self, model, corpus=None, model_name: str = ""):
         self._model = model
+        self.model_name = model_name
+        SentenceTransformerEmbedder.available = True
+
+    # ---- chromadb 新版 EmbeddingFunction 协议 ----
+    is_legacy = False
+
+    def name(self):
+        return "st-" + os.path.basename(self.model_name)
+
+    def embed_query(self, input):
+        return self.embed(input)
+
+    def embed_documents(self, input):
+        return self.embed(input)
 
     def embed(self, texts):
         if isinstance(texts, str):
@@ -116,3 +154,28 @@ class SentenceTransformerEmbedder:
 
     def __call__(self, input):
         return self.embed(input)
+
+
+def auto_embedder(corpus: list = None):
+    """合规默认（缺口 2 修复）：优先本地语义模型；未安装/加载失败/无网时兜底 IDF 哈希。
+
+    - RAG_EMBED_FORCE=hash 强制兜底（CI/演示机确定性）；
+    - RAG_EMBED_MODEL 覆盖模型名/本地路径；
+    - HF_ENDPOINT=https://hf-mirror.com 可加速 HF 下载（国内推荐 ModelScope，见 README）。
+    """
+    if os.environ.get("RAG_EMBED_FORCE") == "hash":
+        return JiebaIdfHashEmbedder(corpus)
+    try:
+        from sentence_transformers import SentenceTransformer
+        name = _resolve_model_name()
+        model = SentenceTransformer(name)
+        return SentenceTransformerEmbedder(model, corpus, model_name=name)
+    except Exception as e:  # 记录兜底原因，便于诊断（不做静默降级）
+        import warnings
+        warnings.warn(f"语义模型不可用，降级 IDF 哈希嵌入: {type(e).__name__}: {e}")
+        return JiebaIdfHashEmbedder(corpus)
+
+
+def best_available(corpus: list = None, dim: int = EMBED_DIM):
+    """兼容旧名：等同 auto_embedder。"""
+    return auto_embedder(corpus)

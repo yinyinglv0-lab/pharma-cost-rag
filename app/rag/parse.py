@@ -181,6 +181,69 @@ def build_document_chunks(base_dir=None) -> list:
                     "text": seg,
                 })
     chunks.extend(_csv_knowledge_chunks(ds))
+    chunks.extend(build_office_chunks(kb_dir))
+    return chunks
+
+
+# ---------------- Word / TXT 支持（5.1.2 格式条款） ----------------
+def _parse_docx(path):
+    """Word 解析（python-docx）：段落 + 表格文本。docx 无固定分页，页码不适用。"""
+    import docx as _docx
+    d = _docx.Document(str(path))
+    lines = [p.text for p in d.paragraphs if p.text.strip()]
+    for table in d.tables:
+        for row in table.rows:
+            lines.append(" ".join(c.text for c in row.cells))
+    return "\n".join(lines)
+
+
+def _parse_txt(path):
+    raw = path.read_bytes()
+    for enc in ("utf-8-sig", "utf-8", "gbk"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", errors="replace")
+
+
+def _chunks_from_text(text, doc_id, source, kind, version="未知版本", effective=""):
+    """通用管线：文本 → NFKC → 分节 → 滑窗 → 知识块（Word/TXT 无页码，page=None）。"""
+    sections = _split_sections([(1, unicodedata.normalize("NFKC", text))])
+    chunks = []
+    for i, sec in enumerate(sections):
+        ctype, forbid = _type_of(sec["title"], kind)
+        windows = _window_split(sec["text"])
+        for w, seg in enumerate(windows):
+            chunks.append({
+                "chunk_id": f"{doc_id}-{i:03d}" + (f"-w{w}" if len(windows) > 1 else ""),
+                "source": source,
+                "page": None,
+                "doc_version": version,
+                "effective_date": effective,
+                "type": ctype,
+                "temporal": "static",
+                "forbid_current_numbers": forbid,
+                "title": sec["title"],
+                "context": f"{doc_id} 知识文档",
+                "text": seg,
+            })
+    return chunks
+
+
+def build_office_chunks(kb_dir) -> list:
+    """扫描目录中的 Word/TXT 知识文档并构建知识块（赛题 5.1.2：支持 PDF/Word/TXT）。"""
+    chunks = []
+    for p in sorted(Path(kb_dir).glob("*.docx")):
+        try:
+            chunks.extend(_chunks_from_text(_parse_docx(p), p.stem, p.name, "通用"))
+        except Exception:
+            continue  # 坏文件跳过，不拖垮整体知识库
+    for p in sorted(Path(kb_dir).glob("*.txt")):
+        try:
+            chunks.extend(_chunks_from_text(_parse_txt(p), p.stem, p.name, "通用"))
+        except Exception:
+            continue
     return chunks
 
 

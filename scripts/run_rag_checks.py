@@ -69,11 +69,13 @@ def main():
     b = r.retrieve("金銀花漲價的原因", top_k=6)
     ok2 = "MKT-金银花" in [i.chunk_id for i in b.results]
     print(f"  {'PASS' if ok2 else 'FAIL'}  繁体查询命中行情块")
-    from app.rag.embed import _h, tokenize
+    from app.rag.embed import JiebaIdfHashEmbedder, _h, tokenize
+    corpus = [c.get("context", "") + " " + c["text"] for c in chunks]
+    emb = JiebaIdfHashEmbedder(corpus=corpus)  # 碰撞率是哈希嵌入的专属指标（语义模型不适用）
     vocab = set()
-    for c in chunks:
-        vocab.update(tokenize((c.get("context", "") + " " + c["text"])))
-    rate = 1 - len({_h(t, kb.embedder.dim) for t in vocab}) / len(vocab)
+    for t in corpus:
+        vocab.update(tokenize(t))
+    rate = 1 - len({_h(t, emb.dim) for t in vocab}) / len(vocab)
     ok3 = rate < 0.25
     print(f"  {'PASS' if ok3 else 'FAIL'}  哈希碰撞率 {rate:.1%} < 25%")
     n_pass += ok1 + ok2 + ok3
