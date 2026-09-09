@@ -10,6 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -49,7 +50,8 @@ with tab1:
     st.header("智能成本分析报告生成")
     col1, col2 = st.columns(2)
     product = col1.selectbox("产品", PRODUCTS)
-    month = col2.selectbox("月份", [f"2026-{m:02d}" for m in range(1, 7)])
+    # 环比计算需上月数据 → 月份从 02 起（01 无上年12月数据）
+    month = col2.selectbox("月份", [f"2026-{m:02d}" for m in range(2, 7)])
     if st.button("生成报告（含归因 + 图表嵌入）", type="primary"):
         with st.spinner("流水线运行中（意图路由→数据→检索→写作→守卫→RPA任务）..."):
             out = run_agent(f"请生成{product}{month}的月度成本分析报告",
@@ -71,7 +73,7 @@ with tab1:
 with tab2:
     st.header("单品成本看板")
     p2 = st.selectbox("产品", PRODUCTS, key="dash_product")
-    m2 = st.selectbox("月份", [f"2026-{m:02d}" for m in range(1, 7)], key="dash_month")
+    m2 = st.selectbox("月份", [f"2026-{m:02d}" for m in range(2, 7)], key="dash_month")
     cols = st.columns(2)
     with cols[0]:
         echarts(CHART_BUILDERS["趋势"](p2))
