@@ -17,14 +17,22 @@ def _get():
 
 
 def step1_find() -> dict:
-    """找差异：产品×要素×差异金额×差异率（2026H1 产量加权）。"""
-    svc, _ = _get()
+    """找差异：产品×成本要素×差异金额×差异率（2026H1 产量加权，赛题 5.3.1 输出格式）。"""
+    svc, ds = _get()
     rows = []
     for p in PRODUCTS:
-        for elem in ("材料", "人工", "制费", "单位成本"):
+        for elem, col in [("材料", "直接材料(元/盒)"), ("人工", "直接人工(元/盒)"),
+                          ("制费", "制造费用(元/盒)"), ("单位成本", "单位成本(元/盒)")]:
             diff_pct = svc.benchmark_diff(p, elem)
+            w1 = float((ds.cost("中药一厂", "2026")[ds.cost("中药一厂", "2026")["产品名称"] == p][col]
+                        * ds.cost("中药一厂", "2026")[ds.cost("中药一厂", "2026")["产品名称"] == p]["产量(盒)"]).sum()
+                       / ds.cost("中药一厂", "2026")[ds.cost("中药一厂", "2026")["产品名称"] == p]["产量(盒)"].sum())
+            w2 = float((ds.cost("中药二厂", "2026")[ds.cost("中药二厂", "2026")["产品名称"] == p][col]
+                        * ds.cost("中药二厂", "2026")[ds.cost("中药二厂", "2026")["产品名称"] == p]["产量(盒)"]).sum()
+                       / ds.cost("中药二厂", "2026")[ds.cost("中药二厂", "2026")["产品名称"] == p]["产量(盒)"].sum())
             rows.append({"product": p, "element": elem,
                          "diff_pct": round(diff_pct, 2),
+                         "diff_amount": round(w1 - w2, 4),
                          "direction": "一厂更优" if diff_pct < 0 else "二厂更优"})
     return {"rows": rows}
 
@@ -46,6 +54,7 @@ def step2_struct(product: str, month: str = "2026-05") -> dict:
                 for _, r in rows.iterrows()]
     material.sort(key=lambda x: -x["share"])
     return {"product": product, "month": month, "tree": nodes,
+            "max_contributor": max(nodes, key=lambda n: abs(n["diff_pct"])),
             "material_drilldown": material,
             "note": "对标厂（中药二厂）数据包仅含成本汇总，无原材料明细——二厂侧下钻止于要素级；"
                     "一厂侧已下钻至原材料级，二厂侧差异去向如实标注为'数据不可得'"}
@@ -72,6 +81,23 @@ def step3_cause(product: str, month: str = "2026-05") -> dict:
     return {"product": product, "tree": tree, "evidence": evidence,
             "graph_evidence": graph_ev, "attribution": parsed,
             "rpa_plan": _to_rpa_plan(parsed.get("suggestions", []), product)}
+
+
+def plan_to_task(item: dict, product: str, month: str = "2026-05") -> dict:
+    """rpa_plan 条目 → 合规整改任务 JSON（可转 RPA 指令，赛题 5.3.2）。"""
+    from ..rpa.ledger import assign_task_id
+    return {
+        "task_id": assign_task_id(product, item["suggestion"][:20], month),
+        "task_title": item["suggestion"],
+        "assignee": item["assignee"],
+        "source": {"analysis_type": "对标分析", "analysis_month": month,
+                   "product": product, "finding": item["suggestion"]},
+        "priority": item["priority"],
+        "deadline": item["deadline"],
+        "suggestion": item["suggestion"],
+        "notify_method": "wechat",
+        "created_at": f"{month}-01T09:00:00",
+    }
 
 
 def _to_rpa_plan(suggestions: list, product: str) -> list:
