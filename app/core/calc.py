@@ -45,9 +45,17 @@ class CalculationService:
 
     # ---------- 环比 / 同比 / 预算偏差 ----------
     def mom(self, product, month, element, factory="中药一厂"):
-        """环比 (%)。month 为 02~06。"""
-        v0 = self.element_value(product, self._prev_month(month), element, factory)
-        v1 = self.element_value(product, month, element, factory)
+        """环比 (%)。边界约定（交付级）：
+        - 上月数据缺失 → 返回 None（标记为 null，而非 0，也非抛异常）；
+        - 基期值为 0 → 返回 None（零基期环比无定义）。
+        """
+        try:
+            v0 = self.element_value(product, self._prev_month(month), element, factory)
+            v1 = self.element_value(product, month, element, factory)
+        except (KeyError, AssertionError):
+            return None
+        if v0 == 0:
+            return None
         return (v1 / v0 - 1) * 100
 
     def _weighted_unit_cost(self, factory, year, product):
@@ -81,10 +89,16 @@ class CalculationService:
 
     # ---------- 三因素分解 / 贡献度 ----------
     def three_factor(self, product, month):
-        """Δ单位成本分解为 材料/人工/制费 三要素：delta(元/盒) / share_pct(%) / rate_pct(%)。"""
+        """Δ单位成本分解为 材料/人工/制费 三要素：delta(元/盒) / share_pct(%) / rate_pct(%)。
+
+        边界约定：上月数据缺失 → 返回 None（标记 null，调用方展示"—"）。
+        """
+        try:
+            u0 = self.element_value(product, self._prev_month(month), "单位成本")
+            u1 = self.element_value(product, month, "单位成本")
+        except (KeyError, AssertionError):
+            return None
         out: Dict[str, dict] = {}
-        u0 = self.element_value(product, self._prev_month(month), "单位成本")
-        u1 = self.element_value(product, month, "单位成本")
         d_unit = u1 - u0
         for elem in ("材料", "人工", "制费"):
             v0 = self.element_value(product, self._prev_month(month), elem)
@@ -159,17 +173,27 @@ class CalculationService:
     def window_change(self, product, material, m1, m2):
         """窗口对齐硬规则：单耗变动与行情变动同窗口一次返回，杜绝窗口错配。
 
-        返回 {window, unit_pct, price_pct, ratio, monotonic}——三者严格同一窗口。
+        返回 {window, unit_pct, price_pct, ratio, monotonic, unit_abs, price_abs}。
+        边界约定（交付级）：基期值为 0 → 变动率标记 None，并退化为绝对值差异法
+        （unit_abs/price_abs 给出 Δ 值），不做零除。
         """
         u = self.implied_unit_consumption(product, material)["values"]
         i1, i2 = self._month_idx(m1), self._month_idx(m2)
         assert i1 < i2, "m1 必须早于 m2"
-        unit_pct = (u[i2] / u[i1] - 1) * 100
-        price_pct = (self.ds.market_price(material, m2) / self.ds.market_price(material, m1) - 1) * 100
-        monotonic = bool(all(u[k] >= u[k - 1] for k in range(i1 + 1, i2 + 1)))
-        ratio = abs(price_pct / unit_pct) if unit_pct else float("inf")
-        return {"window": f"{m1}→{m2}", "unit_pct": float(unit_pct),
-                "price_pct": float(price_pct), "ratio": float(ratio), "monotonic": monotonic}
+        u1, u2 = u[i1], u[i2]
+        p1 = self.ds.market_price(material, m1)
+        p2 = self.ds.market_price(material, m2)
+        unit_pct = None if u1 == 0 else float((u2 / u1 - 1) * 100)
+        price_pct = None if p1 == 0 else float((p2 / p1 - 1) * 100)
+        unit_abs = float(u2 - u1) if u1 == 0 else None
+        price_abs = float(p2 - p1) if p1 == 0 else None
+        monotonic = bool(all(u[k] >= u[k - 1] for k in range(i1 + 1, i2 + 1))) if u1 != 0 else False
+        ratio = None
+        if unit_pct is not None and price_pct is not None:
+            ratio = abs(price_pct / unit_pct) if unit_pct else float("inf")
+        return {"window": f"{m1}→{m2}", "unit_pct": unit_pct,
+                "price_pct": price_pct, "ratio": ratio, "monotonic": monotonic,
+                "unit_abs": unit_abs, "price_abs": price_abs}
 
     # ---------- 对标差异（2026H1 产量加权） ----------
     def benchmark_diff(self, product, element, year="2026"):

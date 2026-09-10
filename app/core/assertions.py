@@ -108,6 +108,15 @@ def run_all(ds, calc) -> list:
     w = calc.window_change("银黄口服液", "黄芩提取物", "2026-04", "2026-06")
     add("A12 窗口对齐规则自检", w["window"] == "2026-04→2026-06")
 
+    # A13 负值告警：成本要素/单位成本出现负值即为数据异常（交付级降级处理）
+    neg = []
+    for (factory, year), df in ds._cost.items():
+        for col in ("直接材料(元/盒)", "直接人工(元/盒)", "制造费用(元/盒)", "单位成本(元/盒)"):
+            hits = df[df[col] < 0]
+            for _, r in hits.iterrows():
+                neg.append((factory, year, r["产品名称"], r["月份"], col, float(r[col])))
+    add("A13 成本值非负告警(负值即异常)", not neg, str(neg[:3]))
+
     return results
 
 

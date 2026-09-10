@@ -129,8 +129,9 @@ def test_dual_caliber_explicit():
 # ============ 边界探针 ============
 def test_boundary_prev_month_guard():
     svc = CalculationService(DataStore())
-    with pytest.raises(AssertionError):
-        svc.three_factor("银黄口服液", "2026-01")  # 无上月 → 显式断言而非静默错数
+    # 无上月 → 标记 null（None），而非 0 或静默错数
+    assert svc.three_factor("银黄口服液", "2026-01") is None
+    assert svc.mom("银黄口服液", "2026-01", "材料") is None
 
 
 def test_boundary_zero_price_pct_no_noise_bar():
