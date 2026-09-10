@@ -17,7 +17,7 @@ MOCK = Path(r"D:\23生信-团日活动（学习雷锋）\重庆比赛AI\创灵�
             r"\创灵境_考题模拟数据\05_RPA接口文档\mock_rpa_server.py")
 
 
-def _task(task_id="TASK-CL-0001"):
+def _task(task_id="TASK-202605-0001"):
     return {
         "task_id": task_id, "task_title": "闭环验收测试",
         "assignee": {"name": "张伟", "department": "采购部", "role": "采购经理"},
