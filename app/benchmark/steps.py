@@ -70,4 +70,22 @@ def step3_cause(product: str, month: str = "2026-05") -> dict:
     except json.JSONDecodeError:
         parsed = {"attribution": raw, "suggestions": []}
     return {"product": product, "tree": tree, "evidence": evidence,
-            "graph_evidence": graph_ev, "attribution": parsed}
+            "graph_evidence": graph_ev, "attribution": parsed,
+            "rpa_plan": _to_rpa_plan(parsed.get("suggestions", []), product)}
+
+
+def _to_rpa_plan(suggestions: list, product: str) -> list:
+    """改进建议 → RPA 指令计划（责任人/优先级/截止时间，规则映射）。"""
+    plan = []
+    for i, s in enumerate(suggestions, 1):
+        if any(k in s for k in ("采购", "合同", "供应商")):
+            dept, role, pri = "采购部", "采购经理", "high"
+        elif any(k in s for k in ("工艺", "收率", "排产", "效率")):
+            dept, role, pri = "生产部", "工艺工程师", "medium"
+        elif any(k in s for k in ("设备", "折旧")):
+            dept, role, pri = "设备部", "设备主管", "medium"
+        else:
+            dept, role, pri = "财务部", "成本会计", "low"
+        plan.append({"seq": i, "suggestion": s, "assignee": {"name": "待指定", "department": dept, "role": role},
+                     "priority": pri, "deadline": "2026-06-30"})
+    return plan

@@ -260,3 +260,39 @@ class CalculationService:
         sub = sub[sub["产品名称"] == product]
         u = float((sub["单位成本(元/盒)"] * sub["产量(盒)"]).sum() / sub["产量(盒)"].sum())
         return u / units[product]
+
+    # ---------- 数字溯源（交付级：CSV 行号 + 公式） ----------
+    @staticmethod
+    def _csv_line(df, mask) -> int:
+        pos = df.index[mask]
+        return int(pos[0]) + 2 if len(pos) else -1  # 默认索引 + 表头行 = 实际 CSV 行号
+
+    def provenance(self, product: str, month: str) -> list:
+        """关键指标的溯源记录：{metric, value, formula, csv_file, line_number}。"""
+        ds = self.ds
+        y = month[:4]
+        df = ds.cost("中药一厂", y)
+        mask = (df["产品名称"] == product) & (df["月份"] == month)
+        row = ds.cost_row("中药一厂", product, month)
+        line = self._csv_line(df, mask)
+        m2 = df[df["产品名称"] == product]
+        prov = [{
+            "metric": "单位成本", "value": float(row["单位成本(元/盒)"]),
+            "formula": "直接材料+直接人工+制造费用",
+            "csv_file": f"中药一厂_成本汇总_{y}年1-6月.csv", "line_number": line},
+            {"metric": "直接材料", "value": float(row["直接材料(元/盒)"]),
+             "formula": "Σ原材料单位消耗成本", "csv_file": "中药一厂_原材料消耗明细_2026年1-6月.csv",
+             "line_number": self._csv_line(ds.material, (ds.material["产品名称"] == product)
+                                           & (ds.material["月份"] == month))},
+            {"metric": "环比(单位成本)", "value": round(self.mom(product, month, "单位成本"), 4),
+             "formula": "(本月-上月)/上月×100%",
+             "csv_file": f"中药一厂_成本汇总_{y}年1-6月.csv",
+             "line_number": f"{self._csv_line(m2, m2['月份'] == f'{y}-{int(month[5:7]) - 1:02d}')}→{line}"},
+            {"metric": "贡献度(材料/人工/制费)", "value": self.contribution(product, month),
+             "formula": "要素变动额/单位成本变动额×100%",
+             "csv_file": f"中药一厂_成本汇总_{y}年1-6月.csv", "line_number": line},
+            {"metric": "对标差异(单位成本)", "value": round(self.benchmark_diff(product, "单位成本"), 4),
+             "formula": "(一厂加权-二厂加权)/二厂加权×100%",
+             "csv_file": "中药一厂/二厂_成本汇总_2026年1-6月.csv", "line_number": -1},
+        ]
+        return prov

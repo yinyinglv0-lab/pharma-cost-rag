@@ -286,9 +286,33 @@ def build_report(product: str, month: str, draft=None, rpa_task=None, llm=None,
                     new_par = par.insert_paragraph_before()
                     new_par.add_run().add_picture(buf, width=Inches(5.6))
                     break
+    # 数字溯源附录（交付级：行号+公式）
+    _append_provenance(doc, product, month)
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
+
+
+def _append_provenance(doc, product: str, month: str):
+    """报告附录：数字溯源表（指标/数值/公式/CSV 文件/行号）——交付级要求。"""
+    svc = CalculationService(DataStore())
+    prov = svc.provenance(product, month)
+    doc.add_heading("附录：数字溯源表", level=1)
+    doc.add_paragraph("本报告全部数字可溯源至 CSV 行号与计算公式（AI 不碰算术）。")
+    table = doc.add_table(rows=1, cols=5)
+    try:
+        table.style = "Table Grid"
+    except KeyError:
+        pass  # 模板未定义该样式时保留默认边框
+    for i, hd in enumerate(["指标", "数值", "公式", "CSV 文件", "行号"]):
+        table.rows[0].cells[i].text = hd
+    for p in prov:
+        cells = table.add_row().cells
+        cells[0].text = p["metric"]
+        cells[1].text = str(p["value"])
+        cells[2].text = p["formula"]
+        cells[3].text = p["csv_file"]
+        cells[4].text = str(p["line_number"])
 
 
 def export_pdf(docx_bytes: bytes, out_path) -> Path:

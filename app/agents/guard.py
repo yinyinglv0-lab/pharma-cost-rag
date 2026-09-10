@@ -93,8 +93,9 @@ def check_rpa_task(task: dict) -> GuardResult:
             or not task["assignee"].get("department"):
         violations.append("assignee 字段缺失")
     if not isinstance(task["source"], dict) or not task["source"].get("analysis_month") \
-            or not task["source"].get("product"):
-        violations.append("source 字段缺失")
+            or not task["source"].get("product") or not task["source"].get("analysis_type") \
+            or not task["source"].get("finding"):
+        violations.append("source 字段缺失（analysis_type/analysis_month/product/finding 缺一不可）")
     if not task.get("suggestion"):
         violations.append("suggestion 为空（禁止无法执行的表述）")
     return GuardResult(passed=not violations, violations=violations)
