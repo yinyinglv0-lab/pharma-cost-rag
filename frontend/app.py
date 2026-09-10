@@ -37,6 +37,7 @@ def echarts(option: dict, height: int = 360):
 <script>
 var chart = echarts.init(document.getElementById('c'));
 chart.setOption({json.dumps(option, ensure_ascii=False)});
+window.addEventListener('resize', function() {{ chart.resize(); }});  // 自适应容器
 </script>"""
     components.html(html, height=height + 20)
 

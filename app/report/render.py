@@ -184,12 +184,12 @@ def _charts(product: str, month: str, svc, ds) -> dict:
     ax.set_title(f"{product} 单位成本趋势（{y}年1-6月）")
     ax.set_ylabel("元/盒")
     figs["趋势"] = fig
-    # 瀑布图（本月 Δ单位成本 三因素）
+    # 瀑布图（本月 Δ单位成本 三因素；配色与看板约定一致：正=绿 #5cb85c / 负=红 #d9534f）
     tf = svc.three_factor(product, month)
     labels = ["材料", "人工", "制费"]
     deltas = [tf[e]["delta"] for e in labels]
     fig, ax = plt.subplots(figsize=(6, 2.6))
-    colors = ["#c0504d" if d >= 0 else "#4f81bd" for d in deltas]
+    colors = ["#5cb85c" if d >= 0 else "#d9534f" for d in deltas]
     bottom = 0.0
     for lb, d, c in zip(labels, deltas, colors):
         ax.bar(lb, d, bottom=bottom, color=c)
