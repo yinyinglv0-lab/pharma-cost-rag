@@ -41,10 +41,11 @@ def simulate_price(product: str, material: str, pct: float, month: str = "2026-0
     ds = DataStore()
     row = ds.cost_row("中药一厂", product, month)
     factors = []
-    for name, cost in _materials(product, month):
-        if name == material:
-            factors.append({"name": name, "delta": round(cost * pct / 100, 4)})
-    if yield_drop_pp:
+    if pct != 0:
+        for name, cost in _materials(product, month):
+            if name == material:
+                factors.append({"name": name, "delta": round(cost * pct / 100, 4)})
+    if yield_drop_pp:  # 零增量因素不进瀑布图（避免 0.00 噪音条）
         factors.append({"name": f"提取收率-{yield_drop_pp}pp(系数0.08)", "delta": round(0.08 * yield_drop_pp, 4)})
     total = round(sum(f["delta"] for f in factors), 4)
     new_unit = round(float(row["单位成本(元/盒)"]) + total, 4)
