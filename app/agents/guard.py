@@ -26,8 +26,9 @@ RPA_SCHEMA = {
     "suggestion": str, "notify_method": str,
     "created_at": r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$",
 }
+# 与 mock TaskCreateRequest 对齐：suggestion/notify_method 为 Optional（存在时校验内容）
 RPA_REQUIRED = {"task_id", "task_title", "assignee", "source", "priority",
-                "deadline", "suggestion", "notify_method", "created_at"}
+                "deadline", "created_at"}
 
 
 @dataclass
@@ -96,8 +97,10 @@ def check_rpa_task(task: dict) -> GuardResult:
             or not task["source"].get("product") or not task["source"].get("analysis_type") \
             or not task["source"].get("finding"):
         violations.append("source 字段缺失（analysis_type/analysis_month/product/finding 缺一不可）")
-    if not task.get("suggestion"):
-        violations.append("suggestion 为空（禁止无法执行的表述）")
+    if "suggestion" in task and not task["suggestion"]:
+        violations.append("suggestion 存在但为空（禁止无法执行的表述）")
+    if "notify_method" in task and task["notify_method"] not in ("wechat", "email", "sms"):
+        violations.append(f"notify_method 枚举非法: {task['notify_method']}")
     return GuardResult(passed=not violations, violations=violations)
 
 
