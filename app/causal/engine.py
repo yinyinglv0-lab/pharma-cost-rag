@@ -49,22 +49,30 @@ def price_replace(product: str, material: str, baseline_month: str, target_month
 
 
 def consumption_replace(product: str, material: str, baseline_month: str, target_month: str) -> float:
-    """单耗替换：隐含单耗（消耗成本÷行情价）钉回基线 → 反事实单位成本。"""
+    """单耗替换：隐含单耗（消耗成本÷行情价）钉回基线 → 反事实单位成本。
+
+    单耗上升时钉回基线 → 成本下降 → 反事实 < 实际（验证轮抓到过符号反向 bug）。
+    """
     base = _material_cost(product, material, baseline_month) / _ds.market_price(material, baseline_month)
     cur_unit = _material_cost(product, material, target_month) / _ds.market_price(material, target_month)
-    delta = _material_cost(product, material, target_month) * (1 - cur_unit / base)
+    delta = _material_cost(product, material, target_month) * (cur_unit / base - 1)
     return _unit_cost(product, target_month) - delta
 
 
 def production_replace(product: str, month: str, new_volume: int) -> float:
-    """产量替换：固定/变动回归参数重算单位人工与制费（材料保持实际，摊薄效应外生）。"""
+    """产量替换（增量法）：反事实 = 实际单位成本 − 摊薄增量。
+
+    摊薄增量 = Σ 固定成分 a × (1/Q新 − 1/Q实)（回归口径 a，材料保持实际）。
+    注：不得用回归线"重建"成本——回归线在当月有残差，重建会污染反事实
+    （验证阶段实测抓到的 bug：恢复产量反而算高成本）。
+    """
     labor = _svc.regression_fixed_variable(product, "人工")
     ovh = _svc.regression_fixed_variable(product, "制费")
     row = _ds.cost_row("中药一厂", product, month)
-    cf_material = float(row["直接材料(元/盒)"])
-    cf_labor = labor["a"] / new_volume + labor["b"]
-    cf_ovh = ovh["a"] / new_volume + ovh["b"]
-    return round(cf_material + cf_labor + cf_ovh, 4)
+    q_cur = float(row["产量(盒)"])
+    # 产量上升 → 1/Q新−1/Q实 < 0 → 反事实 = 实际 + 负增量 = 成本下降（摊薄改善）
+    dilution_delta = (labor["a"] + ovh["a"]) * (1 / new_volume - 1 / q_cur)
+    return round(float(row["单位成本(元/盒)"]) + dilution_delta, 4)
 
 
 # ---------------- 支持度（DoWhy 可选，启发式兜底） ----------------
@@ -126,7 +134,8 @@ def run_all_chains() -> List[CausalChainResult]:
         counterfactual_unit_cost=cf, delta=round(_unit_cost("六味地黄胶囊", "2026-03") - cf, 4),
         support=_support(True, False, False),
         support_basis="维修事件有文档记录，但维修费8500元无成本足迹（F6）",
-        notes="诚实标注：事件有记录、成本足迹不可见；产量效应(+200盒)为假设性重算"))
+        notes="诚实标注：事件有记录、成本足迹不可见；产量效应(+200盒)摊薄改善微乎其微"
+              "（反事实≈实际），属假设性重算；真正的未知是维修费，无法重算"))
     return results
 
 
