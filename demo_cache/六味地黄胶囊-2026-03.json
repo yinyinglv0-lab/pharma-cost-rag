@@ -1,0 +1,34 @@
+{
+ "product": "六味地黄胶囊",
+ "month": "2026-03",
+ "status": "完成",
+ "guard": {
+  "passed": true,
+  "violations": []
+ },
+ "rpa_task": {
+  "task_id": "TASK-202603-0001",
+  "task_title": "请核查六味地黄胶囊2026年3月成本异常项采购合同调价条款",
+  "assignee": {
+   "name": "张伟",
+   "department": "采购部",
+   "role": "采购经理"
+  },
+  "source": {
+   "analysis_type": "月度成本分析",
+   "analysis_month": "2026-03",
+   "product": "六味地黄胶囊",
+   "finding": "六味地黄胶囊成本要素超阈值告警"
+  },
+  "priority": "high",
+  "deadline": "2026-04-03",
+  "suggestion": "核查采购合同中调价条款；比对新老供应商报价",
+  "notify_method": "wechat",
+  "created_at": "2026-03-01T09:00:00"
+ },
+ "warnings": [
+  "断点恢复: fact_pack 复用已落盘产物，未重算",
+  "断点恢复: evidence 复用已落盘产物，未重查",
+  "流水线完成: fact_pack 8 键 / evidence 10 条 / rpa_task 已生成"
+ ]
+}

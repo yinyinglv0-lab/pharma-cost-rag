@@ -262,3 +262,22 @@ def run_agent(query: str, session_id: str = "demo", llm=None) -> dict:
             "fact_pack": out.get("fact_pack"), "evidence": out.get("evidence"),
             "draft": out.get("draft"), "guard": out.get("guard_result"),
             "rpa_task": out.get("rpa_task"), "warnings": out.get("warnings")}
+
+
+# 演示进度可视化：节点中文名映射（阶段6演示工程）
+_NODE_LABELS = {"route": "意图路由", "data": "数据提取(FactPack)", "retrieve": "RAG检索",
+                "writer": "归因写作", "verify": "一致性守卫", "executor": "RPA任务生成",
+                "track": "收尾"}
+
+
+def run_agent_stream(query: str, session_id: str = "demo", llm=None):
+    """流式执行：逐节点产出进度（供前端'数据提取→归因计算→RAG检索→分章撰写'进度条）。"""
+    graph = build_graph(llm=llm)
+    for chunk in graph.stream({"session_id": session_id, "query": query},
+                              config={"configurable": {"thread_id": session_id}},
+                              stream_mode="updates"):
+        for node in chunk:
+            yield {"node": node, "label": _NODE_LABELS.get(node, node)}
+    final = graph.get_state(config={"configurable": {"thread_id": session_id}})
+    yield {"node": "__final__", "label": "完成",
+           "state": final.values if final else None}
