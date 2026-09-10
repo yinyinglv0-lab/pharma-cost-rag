@@ -10,3 +10,4 @@ __pycache__/
 .pytest_cache/
 chroma_data/
 evidence/
+demo_cache/
